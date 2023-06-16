@@ -63,10 +63,12 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
         if self.logger is None:
             class ConsoleLogger:
                 def info(self, str):
-                    print(f"[INFO ]{str}")
+                    #print(f"[INFO ]{str}")
+                    pass
 
                 def debug(self, str):
-                    print(f"[DEBUG]{str}")
+                    #print(f"[DEBUG]{str}")
+                    pass
 
             self.logger = ConsoleLogger()
 
