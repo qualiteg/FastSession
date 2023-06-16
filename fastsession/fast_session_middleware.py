@@ -38,18 +38,18 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app,
                  secret_key,  # クッキー署名用のキー
-                 store=MemoryStore,  # セッション保存用ストア
+                 store=MemoryStore(),  # セッション保存用ストア
                  http_only=True,  # True: CookieがJavaScriptなどのクライアントサイドのスクリプトからアクセス不可となる
                  secure=True,  # True: Https が必要
                  max_age=0,  # 0を指定すると、ブラウザを起動しているときのみ有効。0より大きな値を指定するとブラウザを閉じても有効時間内はセッションが継続される
                  session_cookie="sid",  # セッションクッキーの名前
                  session_object="session",  # request.state以下にぶるさげるSessionオブジェクトの属性名
+                 skip_session_header=None,
                  logger=None):
-        """
-        FastSessionMiddlewareを初期化する。
-        """
+
         super().__init__(app)
 
+        self.skip_session_header = skip_session_header  # like [{"header_name":"X-FastSession-Skip", "header_value":"skip"}]
         self.http_only = http_only
         self.max_age = max_age
         self.secure = secure
@@ -60,9 +60,19 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
         self.session_object = session_object
         self.logger = logger
 
-    def logi(self, message: str):
-        if self.logger is not None:
-            self.logger.info(message)
+        if self.logger is None:
+            class ConsoleLogger:
+                def info(self, str):
+                    print(f"[INFO ]{str}")
+
+                def debug(self, str):
+                    print(f"[DEBUG]{str}")
+
+            self.logger = ConsoleLogger()
+
+        self.logger.debug(f"xxxxx")
+        self.logger.debug(
+            f"FastSession initialized http_only:{http_only} secure:{secure} session_key:'{session_object}' session_cookie_name:{session_cookie} store:{store}")
 
     def create_session_cookie(self, session_id):
         """
@@ -85,23 +95,73 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
         # クッキーオブジェクトにキーを "session" として、今署名済の　「署名済セッションID文字列」　を格納する
         cookie[self.session_cookie_name] = signed_session_id
 
+        self.logger.debug(f"[session_id:'{session_id}'] Creating new Cookie object... cookie[{self.session_cookie_name}]")
+
         if self.http_only:
+            self.logger.debug(f"[session_id:'{session_id}'] cookie[{self.session_cookie_name}]['httponly'] enabled")
+
             cookie[self.session_cookie_name]["httponly"] = True  # Set the HTTP-only flag. HTTP-onlyフラグを設定
 
         if self.secure:
+            self.logger.debug(f"[session_id:'{session_id}'] cookie[{self.session_cookie_name}]['secure'] enabled")
             cookie[self.session_cookie_name]["secure"] = True  # Set the Secure flag. Secure フラグを設定
 
         if self.max_age > 0:
+            self.logger.debug(f"[session_id:'{session_id}'] cookie[{self.session_cookie_name}]['maxage']={self.max_age} enabled")
             cookie[self.session_cookie_name][
-                "max-age"] = self.max_age  # Set the Max-Age attribute. Max-Age 属性を設定（この例では1時間）
+                "max-age"] = self.max_age  # Max-Age 属性を設定（この例では1時間）
             # cookie[self.session_cookie_name]["max-age"] = 60 * 60 * 24 * 365 * 100  # 100 years for example
 
         return cookie
+
+    def should_skip_session_management_by_checking_header(self, request: Request) -> bool:
+        """
+        リクエストヘッダーをチェックしてセッション処理をスキップするか否かを返す
+        :param request:
+        :return:
+        """
+        skip_header = self.skip_session_header
+
+        if skip_header is None:
+            self.logger.debug(f"Don't use skip_header")
+            return False
+
+        if isinstance(skip_header, dict):  # 辞書の場合はリストに変換
+            skip_header = [skip_header]
+
+        header_names = []
+
+        for header in skip_header:
+            header_name = header.get('header_name')
+            header_value = header.get('header_value')
+            header_names.append(header_name)
+
+            self.logger.debug(f"Use skip_header option. skip_header:'{header_name}':'{header_value}'")
+
+            # request.headers は Headers オブジェクトで、ヘッダー名は大文字、小文字どちらで指定してもよい(RFC上はヘッダーは大文字、小文字を区別しない)
+            request_header_value = request.headers.get(header_name)
+            self.logger.debug(f"Use skip_header option. Checking request header: '{header_name}':'{request_header_value}'")
+
+            # header_valueが"*"の場合、header_nameが存在するか確認
+            # またはrequest_header_valueがheader_valueと一致する場合
+            if (header_value == "*" and request_header_value is not None) or request_header_value == header_value:
+                self.logger.debug(f"Use skip_header option. skip_header matched!")
+                return True
+
+        self.logger.debug(f"Use skip_header option. skip_headers:{header_names} not matched in request headers.")
+        return False
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """
         Dispatch the request, handling session management.
         """
+
+        # スキップすべきかどうか判定
+        if self.should_skip_session_management_by_checking_header(request):
+            # ある特定のヘッダと値のペアが含まれていたら、スキップする
+            self.logger.debug(f"Skip session management.")
+            response = await call_next(request)
+            return response
 
         # リクエストをディスパッチし、セッション管理を行う。
         # クライアントからのリクエストに含まれるクッキーから
@@ -113,7 +173,7 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
         if signed_session_id is None:
             # セッションクッキーが無い完全新規アクセス
             # => セッションの新規生成
-            self.logi(f"Completely new access with no session cookies")
+            self.logger.info(f"Completely new access with no session cookies")
 
             # セッションID に署名してクッキーオブジェクトに保存する。
             # また request.state 以下にセッションマネージャをぶるさげてセッションの入出力ができるようにする
@@ -128,7 +188,7 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
             if decoded_dict is not None:
 
                 # - クッキー署名検証に成功したとき
-
+                self.logger.debug(f"Cookie signature validation success")
                 # 「セッションID入り辞書オブジェクト」から セッションID を取得する
                 session_id = decoded_dict.get(self.session_cookie_name)
                 session_store = self.session_store.get_store(session_id)
@@ -140,14 +200,14 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
                     # ブラウザにセッションクッキーが残っている場合
                     # => セッションIDを再生成し、ストアを再生成する
 
-                    self.logi(f"Session cookies available. No store.")
+                    self.logger.info(f"[session_id:'{session_id}'] Session cookie available. But no store for this sessionId found. Maybe store had cleaned.")
                     cookie = await self.create_new_session_id_and_store(request, cause="valid_cookie_but_no_store")
-                    # request.state.session["__cause__"] =
+
                 else:
 
                     # 正しい署名のクッキーがあり、そこからデコードしたセッションIDも正常
                     # かつセッションIDにひもづいたセッションストアが正しく取得できた
-                    self.logi(f"Session cookies,Store available.")
+                    self.logger.info(f"[session_id:'{session_id}'] Session cookie and Store is available! set session_mgr to reqeust.state.{self.session_object}")
 
                     setattr(request.state,
                             self.session_object,
@@ -157,7 +217,6 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
                                 session_save=lambda: self.session_store.save_store(session_id))
                             )
 
-                    # request.state.session_save = lambda: self.session_store.save_store(session_id)
                     session_store["__cause__"] = "success"
 
             else:
@@ -166,7 +225,7 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
                 # 理由２　有効期限切れ
                 # => 旧セッションID用のストレージを削除する
                 # => 新たにセッションを生成
-                self.logi(f"Session cookies available. Verification failed! err:{err}")
+                self.logger.info(f"Session cookies available but verification failed! err:{err}")
 
                 if err == "SignatureExpired":
                     # セッションの有効期限が切れていた場合
@@ -182,6 +241,7 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
             # => session_id をエンコードしたクッキーをセットする
 
             cookie_val = cookie.output(header="").strip()
+            self.logger.info(f"Set response header 'Set-Cookie' to signed cookie value")
             response.headers["Set-Cookie"] = cookie_val  # レスポンスヘッダにセッションID署名済データが入ったクッキーをセットし、クライアント側に反映する
 
         return response
@@ -193,17 +253,20 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
 
         # セッションID に署名してクッキーオブジェクトに保存する。また request.state 以下にセッションマネージャをぶるさげてセッションの入出力ができるようにする
         session_id = str(uuid.uuid4())
+
         session_store = self.session_store.create_store(session_id)
+        self.logger.debug(f"[session_id:'{session_id}'(NEW)] New session_id and store for session_id created.")
 
         if cause is not None:
             session_store["__cause__"] = cause  # セッションが新規生成された理由を格納
+
 
         fast_session_obj = FastSession(
             store=session_store,
             session_id=session_id,
             session_save=lambda: self.session_store.save_store(session_id)
         )
-
+        self.logger.info(f"[session_id:'{session_id}'(NEW)] Set session_mgr to request.state.{self.session_object} ")
         # request.state に self.session_object に指定された属性名で FastSessionオブジェクトをぶらさげる
         setattr(request.state,
                 self.session_object,
