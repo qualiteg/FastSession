@@ -63,16 +63,15 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
         if self.logger is None:
             class ConsoleLogger:
                 def info(self, str):
-                    #print(f"[INFO ]{str}")
+                    # print(f"[INFO ]{str}")
                     pass
 
                 def debug(self, str):
-                    #print(f"[DEBUG]{str}")
+                    # print(f"[DEBUG]{str}")
                     pass
 
             self.logger = ConsoleLogger()
 
-        self.logger.debug(f"xxxxx")
         self.logger.debug(
             f"FastSession initialized http_only:{http_only} secure:{secure} session_key:'{session_object}' session_cookie_name:{session_cookie} store:{store}")
 
@@ -209,7 +208,8 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
 
                     # 正しい署名のクッキーがあり、そこからデコードしたセッションIDも正常
                     # かつセッションIDにひもづいたセッションストアが正しく取得できた
-                    self.logger.info(f"[session_id:'{session_id}'] Session cookie and Store is available! set session_mgr to reqeust.state.{self.session_object}")
+                    self.logger.info(
+                        f"[session_id:'{session_id}'] Session cookie and Store is available! set session_mgr to reqeust.state.{self.session_object}")
 
                     setattr(request.state,
                             self.session_object,
@@ -261,7 +261,6 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
 
         if cause is not None:
             session_store["__cause__"] = cause  # セッションが新規生成された理由を格納
-
 
         fast_session_obj = FastSession(
             store=session_store,

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fastsession",
-    version="0.2.0",
+    version="0.2.1",
     author="Tom Misawa",
     author_email="riversun.org@gmail.com",
     description="A session middleware for Starlette and FastAPI",
