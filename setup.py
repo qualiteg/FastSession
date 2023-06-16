@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fastsession",
-    version="0.1.2",
+    version="0.2.0",
     author="Tom Misawa",
     author_email="riversun.org@gmail.com",
     description="A session middleware for Starlette and FastAPI",
@@ -10,7 +10,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/riversun/FastSession",
     packages=find_packages(exclude=["tests.*", "tests", "examples.*", "examples"]),
-    tests_require=["pytest", "httpx"],
+    tests_require=["pytest", "pytest-asyncio", "httpx"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
