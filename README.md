@@ -1,5 +1,7 @@
 # FastSession
 
+[English](https://github.com/riversun/FastSession/blob/main/README.md) | [&#26085;&#26412;&#35486;](https://github.com/riversun/FastSession/blob/main/README_ja.md)
+
 FastSession is a session management library for FastAPI. 
 
 It provides a middleware, `FastSessionMiddleware`, 
