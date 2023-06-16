@@ -1,8 +1,13 @@
+import pytest
+from unittest.mock import Mock
+
 from starlette.testclient import TestClient
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from fastsession.fast_session_middleware import FastSessionMiddleware, MemoryStore
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 def test_create_session_id_and_store():
@@ -89,6 +94,7 @@ def test_session_counter_increment():
 
 
 import time
+
 
 def test_session_cookie_expiry():
     """
@@ -198,7 +204,7 @@ def test_check_httponly_flag_in_cookie():
     app.add_route("/", test_route)
 
     is_cookie_secure = False  # テスト用途なので False にする
-    is_http_only=True #  HttpOnly を付与する
+    is_http_only = True  # HttpOnly を付与する
     app.add_middleware(FastSessionMiddleware,
                        secret_key='test-secret',
                        store=MemoryStore(),  # Use the same memory store
@@ -254,3 +260,64 @@ def test_check_no_httponly_flag_in_cookie():
     # First request
     response = client.get("/")
     assert 'HttpOnly' not in response.headers['Set-Cookie']
+
+@pytest.mark.asyncio
+async def test_dispatch_should_skip_session_management_with_skip_header():
+    app = Mock(return_value=Response("OK"))  # モックのASGIアプリケーションを作成します
+    middleware = FastSessionMiddleware(
+        app=app,
+        secret_key="test",
+        skip_session_header={"header_name": "X-FastSession-Skip", "header_value": "skip"}
+    )
+
+    # Starlette の Request オブジェクトを(UTなどの目的で)自前で生成するときは、
+    # (1) ヘッダーを　小文字にした、タプルで指定する
+    # (2) バイト文字列（b""） で指定する
+    headers = [(b"x-fastsession-skip", b"skip")]
+    request = Request(scope={"type": "http", "headers": headers}, receive=None)
+
+    # headers = [(b"X-FastSession-Skip", b"skip")]
+    # request = Request(scope={"type": "http", "headers": headers}, receive=None)
+
+    class MockResponse:
+        def __init__(self):
+            self.headers = {}
+
+    emulated_response=MockResponse()
+
+    async def call_next(request):
+        return emulated_response
+
+    response = await middleware.dispatch(request,call_next)
+    print(f"res:{response}")
+    assert not hasattr(request.state, 'session')  # request.stateにsession属性が存在しないことを確認します
+
+
+@pytest.mark.asyncio
+async def test_dispatch_should_not_skip_session_management_without_skip_heade1r():
+    # スキップヘッダが存在しないとき、appが直接呼び出されないことを確認します
+    app = Mock(return_value=Response("OK"))  # モックのASGIアプリケーションを作成します
+    middleware = FastSessionMiddleware(
+        app=app,
+        secret_key="test",
+        skip_session_header={"header_name": "X-FastSession-Skip", "header_value": "skip"}
+    )
+
+    headers = [(b"ignore", b"ignore")]
+    request = Request(scope={"type": "http", "headers": headers}, receive=None)
+
+    # headers = [(b"X-FastSession-Skip", b"skip")]
+    # request = Request(scope={"type": "http", "headers": headers}, receive=None)
+
+    class MockResponse:
+        def __init__(self):
+            self.headers = {}
+
+    emulated_response = MockResponse()
+
+    async def call_next(request):
+        return emulated_response
+
+    response = await middleware.dispatch(request, call_next)
+    print(f"res:{response}")
+    assert hasattr(request.state, 'session')  # request.stateにsession属性が存在することを確認します
