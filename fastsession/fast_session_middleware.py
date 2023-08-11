@@ -41,6 +41,7 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
                  store=MemoryStore(),  # セッション保存用ストア
                  http_only=True,  # True: CookieがJavaScriptなどのクライアントサイドのスクリプトからアクセス不可となる
                  secure=True,  # True: Https が必要
+                 same_site=None,
                  max_age=0,  # 0を指定すると、ブラウザを起動しているときのみ有効。0より大きな値を指定するとブラウザを閉じても有効時間内はセッションが継続される
                  session_cookie="sid",  # セッションクッキーの名前
                  session_object="session",  # request.state以下にぶるさげるSessionオブジェクトの属性名
@@ -53,6 +54,7 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
         self.http_only = http_only
         self.max_age = max_age
         self.secure = secure
+        self.same_site=same_site
         self.secret_key = secret_key
         self.session_cookie_name = session_cookie
         self.session_store = store
@@ -106,6 +108,10 @@ class FastSessionMiddleware(BaseHTTPMiddleware):
         if self.secure:
             self.logger.debug(f"[session_id:'{session_id}'] cookie[{self.session_cookie_name}]['secure'] enabled")
             cookie[self.session_cookie_name]["secure"] = True  # Set the Secure flag. Secure フラグを設定
+
+        if self.same_site:
+            self.logger.debug(f"[session_id:'{session_id}'] cookie[{self.session_cookie_name}]['samesite']={self.same_site} enabled")
+            cookie[self.session_cookie_name]["samesite"] = self.same_site  # Set the SameSite 属性を設定
 
         if self.max_age > 0:
             self.logger.debug(f"[session_id:'{session_id}'] cookie[{self.session_cookie_name}]['maxage']={self.max_age} enabled")
