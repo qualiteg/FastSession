@@ -188,38 +188,6 @@ def test_session_cookie_not_persisted_with_secure_option():
     assert "Counter: 1" in response.text
 
 
-def test_check_httponly_flag_in_cookie():
-    # テストルートの定義
-    async def test_route(request):
-        session = request.state.session.get_session()
-        if "test_counter" not in session:
-            session["test_counter"] = 0
-
-        session["test_counter"] += 1
-
-        return PlainTextResponse(f"Counter: {session['test_counter']}")
-
-    # アプリケーションの作成とミドルウェアの追加
-    app = Starlette()
-    app.add_route("/", test_route)
-
-    is_cookie_secure = False  # テスト用途なので False にする
-    is_http_only = True  # HttpOnly を付与する
-    app.add_middleware(FastSessionMiddleware,
-                       secret_key='test-secret',
-                       store=MemoryStore(),  # Use the same memory store
-                       http_only=is_http_only,
-                       max_age=3600,
-                       secure=is_cookie_secure,
-                       session_cookie="sid"
-                       )
-
-    # テストクライアントの作成
-    client = TestClient(app)
-
-    # First request
-    response = client.get("/")
-    assert 'HttpOnly' in response.headers['Set-Cookie']
 
 def test_check_samesite_flag_in_cookie():
     # テストルートの定義
@@ -257,6 +225,74 @@ def test_check_samesite_flag_in_cookie():
     print(response.headers['Set-Cookie'])
     assert 'SameSite=None' in response.headers['Set-Cookie']
 
+def test_check_no_samesite_flag_in_cookie():
+    # テストルートの定義
+    async def test_route(request):
+        session = request.state.session.get_session()
+        if "test_counter" not in session:
+            session["test_counter"] = 0
+
+        session["test_counter"] += 1
+
+        return PlainTextResponse(f"Counter: {session['test_counter']}")
+
+    # アプリケーションの作成とミドルウェアの追加
+    app = Starlette()
+    app.add_route("/", test_route)
+
+    is_cookie_secure = False  # テスト用途なので False にする
+    is_http_only = True  # HttpOnly を付与する
+    same_site="None"
+    app.add_middleware(FastSessionMiddleware,
+                       secret_key='test-secret',
+                       store=MemoryStore(),  # Use the same memory store
+                       http_only=is_http_only,
+                       max_age=3600,
+                       secure=is_cookie_secure,
+                       session_cookie="sid"
+                       )
+
+    # テストクライアントの作成
+    client = TestClient(app)
+
+    # First request
+    response = client.get("/")
+    print(response.headers['Set-Cookie'])
+    assert 'SameSite=None' not in response.headers['Set-Cookie']
+
+
+def test_check_httponly_flag_in_cookie():
+    # テストルートの定義
+    async def test_route(request):
+        session = request.state.session.get_session()
+        if "test_counter" not in session:
+            session["test_counter"] = 0
+
+        session["test_counter"] += 1
+
+        return PlainTextResponse(f"Counter: {session['test_counter']}")
+
+    # アプリケーションの作成とミドルウェアの追加
+    app = Starlette()
+    app.add_route("/", test_route)
+
+    is_cookie_secure = False  # テスト用途なので False にする
+    is_http_only = True  # HttpOnly を付与する
+    app.add_middleware(FastSessionMiddleware,
+                       secret_key='test-secret',
+                       store=MemoryStore(),  # Use the same memory store
+                       http_only=is_http_only,
+                       max_age=3600,
+                       secure=is_cookie_secure,
+                       session_cookie="sid"
+                       )
+
+    # テストクライアントの作成
+    client = TestClient(app)
+
+    # First request
+    response = client.get("/")
+    assert 'HttpOnly' in response.headers['Set-Cookie']
 
 
 def test_check_no_httponly_flag_in_cookie():
